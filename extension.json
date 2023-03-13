@@ -1,0 +1,13 @@
+{
+  "name": "SPI MEMORY ANALYZER",
+  "apiVersion": "1.0.0",
+  "author": "Thomas Poms",
+  "version": "0.0.1",
+  "description": "Analyzes SPI memory frames",
+  "extensions": {
+    "SPI Memory Analyzer": {
+      "type": "HighLevelAnalyzer",
+      "entryPoint": "HighLevelAnalyzer.HLA_SPI_MEMORY"
+    }
+  }
+}
