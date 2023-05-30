@@ -40,7 +40,7 @@ type of SPI memory uses different commands.
 
 ### 1. Load the extension
 
-### 2. Enable SPI analyze
+### 2. Enable SPI analyzer
 
 ![](/images/enable_spi_analyzer.png)
 
@@ -51,7 +51,7 @@ type of SPI memory uses different commands.
 ![](/images/enable_spi_memory_analyzer.png)  
 
 ### 5. Configure SPI memory analyzer
-![](/images/enable_spi_memory_analyzer.png)
+![](/images/spi_memory_analyzer_configuration.png)
 
 ## Settings examples
 
