@@ -39,6 +39,9 @@ SPI_MEMORY_CMD_READ_DEVICE_ID                              = b'\x9F'
 SPI_MEMORY_CMD_WRITE_STATUS_REGISTER                       = b'\x01'
 SPI_MEMORY_CMD_WRITE_ENABLE_FOR_VOLATILE_STATUS_REGISTER   = b'\x50'
 
+SPI_TCAN_WRITE                                              = b'\x61'
+SPI_TCAN_READ                                               = b'\x41'
+
 IDX_CMD_NAME            = 0
 IDX_NEXT_STATE          = 1
 IDX_LAST_STATE          = 2
@@ -176,99 +179,115 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
             ############################
             # COMMAND/INSTRUCTION
             ############################        
-            if self.state == STATE_CMD:
-                self.command = frame.data['mosi'] 
-                self.address = None              
-                self.data = b''                
-                self.data_byte_cnt = 0
-                self.showInstruction = 1
-                self.timingViolation = 'violation'
-                self.last_end_time_byte = frame.end_time
-                self.last_start_time_byte = frame.start_time
+            
+            # Read first four bytes to determine the functionality
+            
+            
+
+            self.data = frame.data['mosi']
+            if self.data == SPI_TCAN_WRITE:
+                return AnalyzerFrame('Write', frame.start_time, frame.end_time, {
+                    'write': 'writeTcan'
+                })
+            elif self.data == SPI_TCAN_READ:
+                return AnalyzerFrame('Read', frame.start_time, frame.end_time, {
+                    'read': 'readTcan'
+                })
+
+            
+            # if self.state == STATE_CMD:
+            #     self.command = frame.data['mosi'] 
+            #     self.address = None              
+            #     # self.data = b''                
+            #     self.data_byte_cnt = 0
+            #     self.showInstruction = 1
+            #     self.timingViolation = 'violation'
+            #     self.last_end_time_byte = frame.end_time
+            #     self.last_start_time_byte = frame.start_time
                 
               
-                # get the proper state according to the received command      
-                self.state = self.get_next_state(self.command)
+            #     # get the proper state according to the received command      
+            #     self.state = self.get_next_state(self.command)
         
-                self.showInstruction = self.show_cmd(self.filter_setting, self.command);
-                if self.showInstruction == 2:
-                    self.showInstruction = 0
-                    self.state = STATE_NO_DATA
+            #     self.showInstruction = self.show_cmd(self.filter_setting, self.command);
+            #     if self.showInstruction == 2:
+            #         self.showInstruction = 0
+            #         self.state = STATE_NO_DATA
             
-                if self.showInstruction == 1:   
-                    return AnalyzerFrame('Command', frame.start_time, frame.end_time, {
-                        'command': self.cmd_to_str(self.command)
-                    })
-                else:
-                    if self.filter_setting == 'Timing_Violations':
-                        delta = self.calc_delta(self.last_cs_asserted, self.last_start_time_byte)
-                        if delta > self.timeCsToFirstByte:
-                            return self.indicate_violation(self.timeCsToFirstByte, delta, self.last_cs_asserted, self.last_start_time_byte, frame.start_time, frame.end_time)    
+            #     if self.showInstruction == 1:   
+            #         return AnalyzerFrame('Command', frame.start_time, frame.end_time, {
+            #             'command': self.cmd_to_str(self.command)
+            #         })
+            #     else:
+            #         if self.filter_setting == 'Timing_Violations':
+            #             delta = self.calc_delta(self.last_cs_asserted, self.last_start_time_byte)
+            #             if delta > self.timeCsToFirstByte:
+            #                 return self.indicate_violation(self.timeCsToFirstByte, delta, self.last_cs_asserted, self.last_start_time_byte, frame.start_time, frame.end_time)    
             
-            ############################
-            # ADDRESS
-            ############################        
-            elif self.state == STATE_ADDR_H:
-                self.address_frame_start = frame.start_time
+            # ############################
+            # # ADDRESS
+            # ############################        
+            # elif self.state == STATE_ADDR_H:
+            #     self.address_frame_start = frame.start_time
 
-                if self.address_size == '2':
-                    self.state = STATE_ADDR_L           
-                    self.address = int.from_bytes(frame.data['mosi'], 'big') << 8
-                else:
-                    self.state = STATE_ADDR_M           
-                    self.address = int.from_bytes(frame.data['mosi'], 'big') << 16
+            #     if self.address_size == '2':
+            #         self.state = STATE_ADDR_L           
+            #         self.address = int.from_bytes(frame.data['mosi'], 'big') << 8
+            #     else:
+            #         self.state = STATE_ADDR_M           
+            #         self.address = int.from_bytes(frame.data['mosi'], 'big') << 16
                     
-            elif self.state == STATE_ADDR_M:
-                self.address = self.address | int.from_bytes(frame.data['mosi'], 'big') << 8
-                self.state = STATE_ADDR_L           
+            # elif self.state == STATE_ADDR_M:
+            #     self.address = self.address | int.from_bytes(frame.data['mosi'], 'big') << 8
+            #     self.state = STATE_ADDR_L           
             
-            elif self.state == STATE_ADDR_L:
-                self.address = self.address | int.from_bytes(frame.data['mosi'], 'big')
-                self.state = self.get_last_state(self.command)
-                self.data_byte_cnt = 0
+            # elif self.state == STATE_ADDR_L:
+            #     self.address = self.address | int.from_bytes(frame.data['mosi'], 'big')
+            #     self.state = self.get_last_state(self.command)
+            #     self.data_byte_cnt = 0
 
-                if self.filter_setting != 'Timing_Violations':
-                    if self.highlight_cmd_only == 'no':
-                        return AnalyzerFrame('Address', self.address_frame_start, frame.end_time, {
-                            'address': self.address,
-                            'addressHex': hex(self.address)    
-                        })        
+            #     if self.filter_setting != 'Timing_Violations':
+            #         if self.highlight_cmd_only == 'no':
+            #             return AnalyzerFrame('Address', self.address_frame_start, frame.end_time, {
+            #                 'address': self.address,
+            #                 'addressHex': hex(self.address)    
+            #             })        
             ############################
             # DATA
             ############################        
-            elif self.state == STATE_DATA:                
-                if self.data_byte_cnt == 0:             
-                    self.data_frame_start = frame.start_time                   
+            # elif self.state == STATE_DATA:                
+            #     if self.data_byte_cnt == 0:             
+            #         self.data_frame_start = frame.start_time                   
                     
-                self.data_byte_cnt += 1
-                self.data += frame.data[frame_config[self.command][IDX_DATA_LINE]]
-                self.data_frame_end = frame.end_time
+            #     self.data_byte_cnt += 1
+            #     self.data += frame.data[frame_config[self.command][IDX_DATA_LINE]]
+            #     self.data_frame_end = frame.end_time
                 
-                # now we check for timing violations if the proper filter is set
-                if self.filter_setting == 'Timing_Violations':
-                    delta = self.calc_delta(self.last_end_time_byte, frame.start_time)
-                    if delta > self.timeByteToByte:
-                        return self.indicate_violation(self.timeByteToByte, delta, self.last_end_time_byte, frame.start_time, frame.start_time, frame.end_time)    
+            #     # now we check for timing violations if the proper filter is set
+            #     if self.filter_setting == 'Timing_Violations':
+            #         delta = self.calc_delta(self.last_end_time_byte, frame.start_time)
+            #         if delta > self.timeByteToByte:
+            #             return self.indicate_violation(self.timeByteToByte, delta, self.last_end_time_byte, frame.start_time, frame.start_time, frame.end_time)    
           
-                # keep track of the time stamps used for calculating timing violations
-                self.last_end_time_byte = frame.end_time
-                self.last_start_time_byte = frame.start_time  
+            #     # keep track of the time stamps used for calculating timing violations
+            #     self.last_end_time_byte = frame.end_time
+            #     self.last_start_time_byte = frame.start_time  
         ############################
         # CHIP SELECT DEASSERTED
         ############################ 
-        elif frame.type == 'disable':
-            self.last_cs_deasserted = frame.start_time
-            if self.filter_setting == 'Timing_Violations':
-                delta = self.calc_delta(self.last_end_time_byte, self.last_cs_deasserted)
-                if delta > self.timelastByteToCs:
-                    return self.indicate_violation(self.timelastByteToCs, delta, self.last_end_time_byte, self.last_cs_deasserted, frame.start_time, frame.end_time)      
-            else:
-                if self.state == STATE_DATA:
-                    if self.highlight_cmd_only == 'no':
-                        return AnalyzerFrame('Data',
-                            self.data_frame_start,
-                            self.data_frame_end, {
-                            'data': self.data
-                        })
-                else:
-                    pass
+        # elif frame.type == 'disable':
+        #     self.last_cs_deasserted = frame.start_time
+        #     if self.filter_setting == 'Timing_Violations':
+        #         delta = self.calc_delta(self.last_end_time_byte, self.last_cs_deasserted)
+        #         if delta > self.timelastByteToCs:
+        #             return self.indicate_violation(self.timelastByteToCs, delta, self.last_end_time_byte, self.last_cs_deasserted, frame.start_time, frame.end_time)      
+        #     else:
+        #         if self.state == STATE_DATA:
+        #             if self.highlight_cmd_only == 'no':
+        #                 return AnalyzerFrame('Data',
+        #                     self.data_frame_start,
+        #                     self.data_frame_end, {
+        #                     'data': self.data
+        #                 })
+        #         else:
+        #             pass

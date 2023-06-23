@@ -1,11 +1,11 @@
 {
-  "name": "SPI MEMORY ANALYZER",
+  "name": "SPI TCAN ANALYZER",
   "apiVersion": "1.0.0",
-  "author": "Thomas Poms",
+  "author": "Jason Hahn",
   "version": "0.0.2",
-  "description": "Analyzes SPI memory frames",
+  "description": "Analyzes TCAN4550 SPI comms",
   "extensions": {
-    "SPI Memory Analyzer": {
+    "SPI TCAN Analyzer": {
       "type": "HighLevelAnalyzer",
       "entryPoint": "HighLevelAnalyzer.HLA_SPI_MEMORY"
     }
