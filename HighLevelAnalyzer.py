@@ -12,6 +12,7 @@
 # If not, see <https://www.gnu.org/licenses/>.
 
 from saleae.analyzers import HighLevelAnalyzer, AnalyzerFrame, StringSetting, ChoicesSetting, NumberSetting
+from TcanRegisters import *
 
 # states
 STATE_START         = 0
@@ -21,6 +22,14 @@ STATE_ADDR_M        = 3
 STATE_ADDR_L        = 4
 STATE_DATA          = 5
 STATE_NO_DATA       = 6
+
+STATE_TCAN_IDLE     = 0
+STATE_TCAN_CMD      = 1
+STATE_TCAN_REG1     = 2
+STATE_TCAN_REG2     = 3
+STATE_TCAN_WORDS    = 4
+STATE_TCAN_DATA_READ    = 5
+STATE_TCAN_DATA_WRITE   = 6
 
 # supported commands
 # if you add a new command here, ensure that you modify frame_config as well
@@ -72,6 +81,7 @@ frame_config = {
     SPI_MEMORY_CMD_WRITE_ENABLE_FOR_VOLATILE_STATUS_REGISTER   : ["Write Enable Volatile Status Reg"            ,STATE_NO_DATA          ,STATE_NO_DATA          ,'WRITE_ENABLE_FOR_VOLATILE_STATUS_REGISTER'    ,''            ],
 }
 
+
 # High level analyzers must subclass the HighLevelAnalyzer class.
 class HLA_SPI_MEMORY(HighLevelAnalyzer):
   
@@ -87,7 +97,19 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
     highlight_cmd_only = ChoicesSetting(label='Mark command only', choices=('no', 'yes'))
     timeCsToFirstByte = NumberSetting(label='CS to first byte (tCSA_B) [ns]', min_value=0, max_value=10000000)    
     timelastByteToCs = NumberSetting(label='Last byte to CS (tB_CSIA) [ns]', min_value=0, max_value=10000000)    
-    timeByteToByte = NumberSetting(label='Byte to byte (tB_B) [ns]', min_value=0, max_value=10000000)    
+    timeByteToByte = NumberSetting(label='Byte to byte (tB_B) [ns]', min_value=0, max_value=10000000)
+    state = STATE_TCAN_CMD
+    data = []
+    dataString = ''
+    dataCount = 0
+    frameStartTime = 0
+    frameEndTime = 0
+    regString = ''
+    regName = ''
+    prevRegName = ''
+    cmdString = ''
+    id = ''
+    firstDataFlag = 0
   
     result_types = {
         'Command': {'format': 'cmd: {{data.command}}'},
@@ -95,6 +117,8 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
         'Data': {'format': 'data:  {{data.data}}'},
         'TimingViolation': {'format': 'violation:  {{data.delta_ns}} > {{data.maxTiming}}'},
     }
+
+    bytecounter = 0
 
     def __init__(self):
         print("### Settings ###")
@@ -104,7 +128,7 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
         print('    cs to byte [ns]: ', int(self.timeCsToFirstByte))
         print('    byte to byte: ', int(self.timeByteToByte))
         print('    byte to cs: ', int(self.timelastByteToCs))
-        state = STATE_START
+        state = STATE_TCAN_CMD
 
     def cmd_to_str(self, command):
         try:
@@ -181,18 +205,75 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
             ############################        
             
             # Read first four bytes to determine the functionality
-            
-            
+            if self.state == STATE_TCAN_CMD:
+                self.prevRegName = self.regString
+                self.dataString = ''
+                self.data1 = frame.data['mosi']
+                self.frameStartTime = frame.start_time
+                if self.data1 == SPI_TCAN_WRITE or self.data1 == SPI_TCAN_READ:
+                    self.state = STATE_TCAN_REG1
+                else:
+                    return AnalyzerFrame('Error', frame.start_time, frame.end_time, {
+                        'Type': 'Unexpected Data'
+                    })
+            elif self.state == STATE_TCAN_REG1:
+                self.data2 = frame.data['mosi']
+                self.state = STATE_TCAN_REG2
+            elif self.state == STATE_TCAN_REG2:
+                self.data3 = frame.data['mosi']
+                self.state = STATE_TCAN_WORDS
+            elif self.state == STATE_TCAN_WORDS:
+                self.data4 = frame.data['mosi']
+                self.dataCount = int.from_bytes(self.data4, "big") * 4
 
-            self.data = frame.data['mosi']
-            if self.data == SPI_TCAN_WRITE:
-                return AnalyzerFrame('Write', frame.start_time, frame.end_time, {
-                    'write': 'writeTcan'
-                })
-            elif self.data == SPI_TCAN_READ:
-                return AnalyzerFrame('Read', frame.start_time, frame.end_time, {
-                    'read': 'readTcan'
-                })
+                if (self.data1 == SPI_TCAN_WRITE):
+                    self.state = STATE_TCAN_DATA_WRITE
+                    self.cmdString = 'Write '
+                elif (self.data1 == SPI_TCAN_READ):
+                    self.state = STATE_TCAN_DATA_READ
+                    self.cmdString = 'Read '
+                self.firstDataFlag = 1
+                self.frameEndTime = frame.end_time
+                self.regString = str("%0.2X" % int.from_bytes(self.data2, 'big')) + str("%0.2X" % int.from_bytes(self.data3, 'big'))
+                self.regName = getRegisterString(self.regString)
+                # return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                # 'Register': self.regString, 'Name': self.regName
+                # })
+            elif self.state == STATE_TCAN_DATA_READ:
+                self.data.append(frame.data['miso'])
+                self.dataString+=str("%0.2X" % int.from_bytes(frame.data['miso'], 'big'))
+                self.dataCount-=1
+                # if self.firstDataFlag:
+                #     self.firstDataFlag = 0
+                #     self.frameStartTime = frame.start_time
+                if self.dataCount == 0:
+                    self.frameEndTime = frame.end_time
+                    self.state = STATE_TCAN_CMD
+                    return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                    'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString
+                    })
+            elif self.state == STATE_TCAN_DATA_WRITE:
+                self.data.append(frame.data['mosi'])
+                self.dataString+=str("%0.2X" % int.from_bytes(frame.data['mosi'], 'big'))
+                self.dataCount-=1
+                if self.firstDataFlag:
+                    self.firstDataFlag = 0
+                    self.frameStartTime = frame.start_time
+                if self.dataCount == 0:
+                    self.frameEndTime = frame.end_time
+                    self.state = STATE_TCAN_CMD
+                if self.dataCount == 0:
+                    self.frameEndTime = frame.end_time
+                    self.state = STATE_TCAN_CMD
+                    if self.regString[0:2] == "84":
+                        self.id = parseTcanTx(self.dataString).get("id", "None")
+                        return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString, 'ID' : str(self.id)
+                        })
+                    else:
+                        return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString
+                        })
 
             
             # if self.state == STATE_CMD:
