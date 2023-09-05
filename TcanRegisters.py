@@ -62,9 +62,18 @@ def getRegisterString(inputString):
     outputString = RegisterStringsDict.get(inputString, "None")
     return outputString
 
-def parseTcanTx(inputString):
+def parseTcanTxRx(inputString):
     idString = inputString[:8]
     idRawNum = int(idString, 16)
     id = idRawNum & 0x1FFFFFFF
     id = id >> 18
     return {"id" : id}
+
+def getRtr(inputString):
+    rtrString = inputString[0]
+    rtrRaw = int(rtrString, 16)
+    rtr = rtrRaw & 0x2
+    if rtr == 0x2:
+        return {"frame" : "rtr"}
+    else:
+        return {"frame" : "data"}

@@ -109,6 +109,7 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
     prevRegName = ''
     cmdString = ''
     id = ''
+    rtr = ''
     firstDataFlag = 0
   
     result_types = {
@@ -249,9 +250,16 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
                 if self.dataCount == 0:
                     self.frameEndTime = frame.end_time
                     self.state = STATE_TCAN_CMD
-                    return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
-                    'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString
-                    })
+                    if self.regString[0] == "8":
+                        self.id = parseTcanTxRx(self.dataString).get("id", "None")
+                        self.rtr = getRtr(self.dataString).get("frame", "None")
+                        return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString, 'ID' : str(self.id), 'Frame' : str(self.rtr)
+                        })
+                    else:
+                        return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
+                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString
+                        })
             elif self.state == STATE_TCAN_DATA_WRITE:
                 self.data.append(frame.data['mosi'])
                 self.dataString+=str("%0.2X" % int.from_bytes(frame.data['mosi'], 'big'))
@@ -266,9 +274,10 @@ class HLA_SPI_MEMORY(HighLevelAnalyzer):
                     self.frameEndTime = frame.end_time
                     self.state = STATE_TCAN_CMD
                     if self.regString[0:2] == "84":
-                        self.id = parseTcanTx(self.dataString).get("id", "None")
+                        self.id = parseTcanTxRx(self.dataString).get("id", "None")
+                        self.rtr = getRtr(self.dataString).get("frame", "None")
                         return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
-                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString, 'ID' : str(self.id)
+                        'Register': self.regString, 'Name' : self.regName, 'Data': self.dataString, 'ID' : str(self.id), 'Frame' : str(self.rtr)
                         })
                     else:
                         return AnalyzerFrame(self.cmdString, self.frameStartTime, self.frameEndTime, {
